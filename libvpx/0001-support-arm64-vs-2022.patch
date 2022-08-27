@@ -1,0 +1,25 @@
+diff --git a/build/make/gen_msvs_vcxproj.sh b/build/make/gen_msvs_vcxproj.sh
+index 6f91ad478..dffed7431 100755
+--- a/build/make/gen_msvs_vcxproj.sh
++++ b/build/make/gen_msvs_vcxproj.sh
+@@ -34,7 +34,7 @@ Options:
+     --name=project_name         Name of the project (required)
+     --proj-guid=GUID            GUID to use for the project
+     --module-def=filename       File containing export definitions (for DLLs)
+-    --ver=version               Version (14-16) of visual studio to generate for
++    --ver=version               Version (14-17) of visual studio to generate for
+     --src-path-bare=dir         Path to root of source tree
+     -Ipath/to/include           Additional include directories
+     -DFLAG[=value]              Preprocessor macros to define
+diff --git a/configure b/configure
+index da631a45e..1eaf3051d 100755
+--- a/configure
++++ b/configure
+@@ -104,6 +104,7 @@ all_platforms="${all_platforms} arm64-darwin21-gcc"
+ all_platforms="${all_platforms} arm64-linux-gcc"
+ all_platforms="${all_platforms} arm64-win64-gcc"
+ all_platforms="${all_platforms} arm64-win64-vs15"
++all_platforms="${all_platforms} arm64-win64-vs17"
+ all_platforms="${all_platforms} armv7-android-gcc"   #neon Cortex-A8
+ all_platforms="${all_platforms} armv7-darwin-gcc"    #neon Cortex-A8
+ all_platforms="${all_platforms} armv7-linux-rvct"    #neon Cortex-A8
