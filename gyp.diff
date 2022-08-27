@@ -1,8 +1,50 @@
+diff --git a/pylib/gyp/MSVSSettings.py b/pylib/gyp/MSVSSettings.py
+index 1d2e25ab..2c62de39 100644
+--- a/pylib/gyp/MSVSSettings.py
++++ b/pylib/gyp/MSVSSettings.py
+@@ -825,7 +825,8 @@ _target_machine_enumeration = _Enumeration(
+      'MachineSH4',  # /MACHINE:SH4
+      None,
+      'MachineTHUMB',  # /MACHINE:THUMB
+-     'MachineX64'])  # /MACHINE:X64
++     'MachineX64',  # /MACHINE:X64
++     'MachineARM64'])  # /MACHINE:ARM64
+ 
+ _Same(_link, 'AssemblyDebug',
+       _Enumeration(['',
+@@ -979,7 +980,8 @@ _Same(_midl, 'TargetEnvironment',
+       _Enumeration(['NotSet',
+                     'Win32',  # /env win32
+                     'Itanium',  # /env ia64
+-                    'X64']))  # /env x64
++                    'X64',  # /env x64
++                    'ARM64']))  # /env arm64
+ _Same(_midl, 'EnableErrorChecks',
+       _Enumeration(['EnableCustom',
+                     'None',  # /error none
 diff --git a/pylib/gyp/MSVSVersion.py b/pylib/gyp/MSVSVersion.py
-index 71582ccd..5e316e0e 100644
+index 71582ccd..394fd1df 100644
 --- a/pylib/gyp/MSVSVersion.py
 +++ b/pylib/gyp/MSVSVersion.py
-@@ -162,7 +162,7 @@ def _RegistryQueryBase(sysdir, key, value):
+@@ -83,7 +83,7 @@ class VisualStudioVersion(object):
+   def _SetupScriptInternal(self, target_arch):
+     """Returns a command (with arguments) to be used to set up the
+     environment."""
+-    assert target_arch in ('x86', 'x64'), "target_arch not supported"
++    assert target_arch in ('x86', 'x64', 'arm64'), "target_arch not supported"
+     # If WindowsSDKDir is set and SetEnv.Cmd exists then we are using the
+     # depot_tools build tools and should run SetEnv.Cmd to set up the
+     # environment. The check for WindowsSDKDir alone is not sufficient because
+@@ -105,7 +105,7 @@ class VisualStudioVersion(object):
+ 
+       # Always use a native executable, cross-compiling if necessary.
+       host_arch = 'amd64' if is_host_arch_x64 else 'x86'
+-      msvc_target_arch = 'amd64' if target_arch == 'x64' else 'x86'
++      msvc_target_arch = 'amd64' if target_arch == 'x64' else 'arm64' if target_arch == 'arm64' else 'x86'
+       arg = host_arch
+       if host_arch != msvc_target_arch:
+         arg += '_' + msvc_target_arch
+@@ -166,7 +166,7 @@ def _RegistryQueryBase(sysdir, key, value):
    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
    # Obtain the stdout from reg.exe, reading to the end so p.returncode is valid
    # Note that the error text may be in [1] in some cases
@@ -11,26 +53,7 @@ index 71582ccd..5e316e0e 100644
    # Check return code from reg.exe; officially 0==success and 1==error
    if p.returncode:
      return None
-@@ -260,15 +260,25 @@ def _CreateVersion(name, path, sdk_based=False):
-   if path:
-     path = os.path.normpath(path)
-   versions = {
-+      '2022': VisualStudioVersion('2022',
-+                                  'Visual Studio 2022',
-+                                  solution_version='12.00',
-+                                  project_version='17.0',
-+                                  flat_sln=False,
-+                                  uses_vcxproj=True,
-+                                  path=path,
-+                                  sdk_based=sdk_based,
-+                                  default_toolset='v143',
-+                                  compatible_sdks=['v10.0']),
-       '2019': VisualStudioVersion('2019',
-                                   'Visual Studio 2019',
-                                   solution_version='12.00',
--                                  project_version='15.0',
-+                                  project_version='16.0',
-                                   flat_sln=False,
+@@ -282,7 +282,7 @@ def _CreateVersion(name, path, sdk_based=False):
                                    uses_vcxproj=True,
                                    path=path,
                                    sdk_based=sdk_based,
@@ -39,7 +62,7 @@ index 71582ccd..5e316e0e 100644
                                    compatible_sdks=['v8.1', 'v10.0']),
        '2017': VisualStudioVersion('2017',
                                    'Visual Studio 2017',
-@@ -381,7 +391,7 @@ def _ConvertToCygpath(path):
+@@ -395,7 +395,7 @@ def _ConvertToCygpath(path):
    """Convert to cygwin path if we are using cygwin."""
    if sys.platform == 'cygwin':
      p = subprocess.Popen(['cygpath', path], stdout=subprocess.PIPE)
@@ -48,54 +71,6 @@ index 71582ccd..5e316e0e 100644
    return path
  
  
-@@ -400,6 +410,8 @@ def _DetectVisualStudioVersions(versions_to_check, force_express):
-       2013(e) - Visual Studio 2013 (12)
-       2015    - Visual Studio 2015 (14)
-       2017    - Visual Studio 2017 (15)
-+      2019    - Visual Studio 2019 (16)
-+      2022    - Visual Studio 2022 (17)
-     Where (e) is e for express editions of MSVS and blank otherwise.
-   """
-   version_to_year = {
-@@ -409,10 +421,19 @@ def _DetectVisualStudioVersions(versions_to_check, force_express):
-       '11.0': '2012',
-       '12.0': '2013',
-       '14.0': '2015',
--      '15.0': '2017'
-+      '15.0': '2017',
-+      '16.0': '2019',
-+      '17.0': '2022'
-   }
-+  shell_path = os.environ.get('VSINSTALLDIR')
-+  shell_path = _ConvertToCygpath(shell_path) if shell_path else None
-+  shell_version = os.environ.get('VisualStudioVersion') if shell_path else None
-   versions = []
-   for version in versions_to_check:
-+    if version == shell_version:
-+      if os.path.exists(shell_path):
-+        versions.append(_CreateVersion(version_to_year[version], shell_path))
-+
-     # Old method of searching for which VS version is installed
-     # We don't use the 2010-encouraged-way because we also want to get the
-     # path to the binaries, which it doesn't offer.
-@@ -470,7 +491,7 @@ def SelectVisualStudioVersion(version='auto', allow_fallback=True):
-   if version == 'auto':
-     version = os.environ.get('GYP_MSVS_VERSION', 'auto')
-   version_map = {
--    'auto': ('15.0', '14.0', '12.0', '10.0', '9.0', '8.0', '11.0'),
-+    'auto': ('17.0', '16.0', '15.0', '14.0', '12.0', '10.0', '9.0', '8.0', '11.0'),
-     '2005': ('8.0',),
-     '2005e': ('8.0',),
-     '2008': ('9.0',),
-@@ -483,6 +504,8 @@ def SelectVisualStudioVersion(version='auto', allow_fallback=True):
-     '2013e': ('12.0',),
-     '2015': ('14.0',),
-     '2017': ('15.0',),
-+    '2019': ('16.0',),
-+    '2022': ('17.0',),
-   }
-   override_path = os.environ.get('GYP_MSVS_OVERRIDE_PATH')
-   if override_path:
 diff --git a/pylib/gyp/generator/cmake.py b/pylib/gyp/generator/cmake.py
 index 4a2041cf..e5333926 100644
 --- a/pylib/gyp/generator/cmake.py
@@ -162,7 +137,7 @@ index 4a2041cf..e5333926 100644
      SetVariable(output, 'CMAKE_C_COMPILER', cc)
    if cxx:
 diff --git a/pylib/gyp/generator/msvs.py b/pylib/gyp/generator/msvs.py
-index 843e7067..c5c43737 100644
+index 843e7067..0cf5369e 100644
 --- a/pylib/gyp/generator/msvs.py
 +++ b/pylib/gyp/generator/msvs.py
 @@ -116,7 +116,7 @@ def _GetDomainAndUserName():
@@ -174,6 +149,28 @@ index 843e7067..c5c43737 100644
        username_re = re.compile(r'^User name\s+(\S+)', re.MULTILINE)
        username_match = username_re.search(config)
        if username_match:
+@@ -1904,6 +1904,8 @@ def _InitNinjaFlavor(params, target_list, target_dicts):
+       configuration = '$(Configuration)'
+       if params.get('target_arch') == 'x64':
+         configuration += '_x64'
++      elif params.get('target_arch') == 'arm64':
++        configuration += '_arm64'
+       spec['msvs_external_builder_out_dir'] = os.path.join(
+           gyp.common.RelativePath(params['options'].toplevel_dir, gyp_dir),
+           ninja_generator.ComputeOutputDir(params),
+diff --git a/pylib/gyp/generator/ninja.py b/pylib/gyp/generator/ninja.py
+index bf04e567..3703b94d 100644
+--- a/pylib/gyp/generator/ninja.py
++++ b/pylib/gyp/generator/ninja.py
+@@ -242,7 +242,7 @@ class NinjaWriter(object):
+     if flavor == 'win':
+       # See docstring of msvs_emulation.GenerateEnvironmentFiles().
+       self.win_env = {}
+-      for arch in ('x86', 'x64'):
++      for arch in ('x86', 'x64', 'arm64'):
+         self.win_env[arch] = 'environment.' + arch
+ 
+     # Relative path from build output dir to base dir.
 diff --git a/pylib/gyp/generator/xcode.py b/pylib/gyp/generator/xcode.py
 index 8bc22bed..24bee427 100644
 --- a/pylib/gyp/generator/xcode.py
@@ -255,37 +252,82 @@ index 4c128916..2bea3341 100644
          # variables dict (making |variables| a varaibles sub-dict of a
          # variables dict), use the_dict's definition.
 diff --git a/pylib/gyp/msvs_emulation.py b/pylib/gyp/msvs_emulation.py
-index 63d40e63..fab4890d 100644
+index 63d40e63..45003d42 100644
 --- a/pylib/gyp/msvs_emulation.py
 +++ b/pylib/gyp/msvs_emulation.py
-@@ -139,7 +139,7 @@ def _FindDirectXInstallation():
-     # Setup params to pass to and attempt to launch reg.exe.
+@@ -143,7 +143,7 @@ def _FindDirectXInstallation():
      cmd = ['reg.exe', 'query', r'HKLM\Software\Microsoft\DirectX', '/s']
-     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                          universal_newlines=True)
 -    for line in p.communicate()[0].splitlines():
 +    for line in p.communicate()[0].decode('utf-8', 'ignore').splitlines():
        if 'InstallPath' in line:
          dxsdk_dir = line.split('    ')[3] + "\\"
  
-@@ -321,7 +321,7 @@ class MsvsSettings(object):
-     # first level is globally for the configuration (this is what we consider
-     # "the" config at the gyp level, which will be something like 'Debug' or
-     # 'Release'), VS2015 and later only use this level
--    if self.vs_version.short_name >= 2015:
-+    if int(self.vs_version.short_name) >= 2015:
-       return config
-     # and a second target-specific configuration, which is an
-     # override for the global one. |config| is remapped here to take into
-@@ -485,7 +485,7 @@ class MsvsSettings(object):
-         prefix='/arch:')
-     cflags.extend(['/FI' + f for f in self._Setting(
-         ('VCCLCompilerTool', 'ForcedIncludeFiles'), config, default=[])])
--    if self.vs_version.project_version >= 12.0:
-+    if float(self.vs_version.project_version) >= 12.0:
-       # New flag introduced in VS2013 (project version 12.0) Forces writes to
-       # the program database (PDB) to be serialized through MSPDBSRV.EXE.
-       # https://msdn.microsoft.com/en-us/library/dn502518.aspx
-@@ -1054,6 +1054,7 @@ def GenerateEnvironmentFiles(toplevel_build_dir, generator_flags,
+@@ -254,7 +254,7 @@ class MsvsSettings(object):
+   def GetVSMacroEnv(self, base_to_build=None, config=None):
+     """Get a dict of variables mapping internal VS macro names to their gyp
+     equivalents."""
+-    target_platform = 'Win32' if self.GetArch(config) == 'x86' else 'x64'
++    target_platform = 'Win32' if self.GetArch(config) == 'x86' else 'arm64' if self.GetArch(config) == 'arm64' else 'x64'
+     target_name = self.spec.get('product_prefix', '') + \
+         self.spec.get('product_name', self.spec['target_name'])
+     target_dir = base_to_build + '\\' if base_to_build else ''
+@@ -317,7 +317,7 @@ class MsvsSettings(object):
+     if not platform: # If no specific override, use the configuration's.
+       platform = configuration_platform
+     # Map from platform to architecture.
+-    return {'Win32': 'x86', 'x64': 'x64'}.get(platform, 'x86')
++    return {'Win32': 'x86', 'x64': 'x64', 'arm64': 'arm64'}.get(platform, 'x86')
+ 
+   def _TargetConfig(self, config):
+     """Returns the target-specific configuration."""
+@@ -333,6 +333,8 @@ class MsvsSettings(object):
+     arch = self.GetArch(config)
+     if arch == 'x64' and not config.endswith('_x64'):
+       config += '_x64'
++    if arch == 'arm64' and not config.endswith('_arm64'):
++      config += '_arm64'
+     if arch == 'x86' and config.endswith('_x64'):
+       config = config.rsplit('_', 1)[0]
+     return config
+@@ -543,7 +545,7 @@ class MsvsSettings(object):
+     libflags.extend(self._GetAdditionalLibraryDirectories(
+         'VCLibrarianTool', config, gyp_to_build_path))
+     lib('LinkTimeCodeGeneration', map={'true': '/LTCG'})
+-    lib('TargetMachine', map={'1': 'X86', '17': 'X64', '3': 'ARM'},
++    lib('TargetMachine', map={'1': 'X86', '17': 'X64', '3': 'ARM', '18': 'ARM64'},
+         prefix='/MACHINE:')
+     lib('AdditionalOptions')
+     return libflags
+@@ -588,7 +590,7 @@ class MsvsSettings(object):
+                           'VCLinkerTool', append=ldflags)
+     self._GetDefFileAsLdflags(ldflags, gyp_to_build_path)
+     ld('GenerateDebugInformation', map={'true': '/DEBUG'})
+-    ld('TargetMachine', map={'1': 'X86', '17': 'X64', '3': 'ARM'},
++    ld('TargetMachine', map={'1': 'X86', '17': 'X64', '3': 'ARM', '18': 'ARM64'},
+        prefix='/MACHINE:')
+     ldflags.extend(self._GetAdditionalLibraryDirectories(
+         'VCLinkerTool', config, gyp_to_build_path))
+@@ -883,7 +885,7 @@ class MsvsSettings(object):
+                  ('iid', iid),
+                  ('proxy', proxy)]
+     # TODO(scottmg): Are there configuration settings to set these flags?
+-    target_platform = 'win32' if self.GetArch(config) == 'x86' else 'x64'
++    target_platform = 'win32' if self.GetArch(config) == 'x86' else 'arm64' if self.GetArch(config) == 'arm64' else 'x64'
+     flags = ['/char', 'signed', '/env', target_platform, '/Oicf']
+     return outdir, output, variables, flags
+ 
+@@ -1041,7 +1043,7 @@ def GenerateEnvironmentFiles(toplevel_build_dir, generator_flags,
+   meet your requirement (e.g. for custom toolchains), you can pass
+   "-G ninja_use_custom_environment_files" to the gyp to suppress file
+   generation and use custom environment files prepared by yourself."""
+-  archs = ('x86', 'x64')
++  archs = ('x86', 'x64', 'arm64')
+   if generator_flags.get('ninja_use_custom_environment_files', 0):
+     cl_paths = {}
+     for arch in archs:
+@@ -1059,6 +1061,7 @@ def GenerateEnvironmentFiles(toplevel_build_dir, generator_flags,
      variables, _ = popen.communicate()
      if popen.returncode != 0:
        raise Exception('"%s" failed with error %d' % (args, popen.returncode))
@@ -293,9 +335,9 @@ index 63d40e63..fab4890d 100644
      env = _ExtractImportantEnvironment(variables)
  
      # Inject system includes from gyp files into INCLUDE.
-@@ -1073,6 +1074,7 @@ def GenerateEnvironmentFiles(toplevel_build_dir, generator_flags,
-       'for', '%i', 'in', '(cl.exe)', 'do', '@echo', 'LOC:%~$PATH:i'))
-     popen = subprocess.Popen(args, shell=True, stdout=subprocess.PIPE)
+@@ -1079,6 +1082,7 @@ def GenerateEnvironmentFiles(toplevel_build_dir, generator_flags,
+     popen = subprocess.Popen(args, shell=True, stdout=subprocess.PIPE,
+                              universal_newlines=True)
      output, _ = popen.communicate()
 +    output = output.decode('utf-8', 'ignore')
      cl_paths[arch] = _ExtractCLPath(output)
@@ -305,52 +347,41 @@ diff --git a/pylib/gyp/win_tool.py b/pylib/gyp/win_tool.py
 index 89734846..957f00f5 100755
 --- a/pylib/gyp/win_tool.py
 +++ b/pylib/gyp/win_tool.py
-@@ -132,6 +132,7 @@ class WinTool(object):
-     link = subprocess.Popen(args, shell=sys.platform == 'win32', env=env,
-                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+@@ -133,6 +133,7 @@ class WinTool(object):
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                             universal_newlines=True)
      out, _ = link.communicate()
 +    out = out.decode('utf-8', 'ignore')
      for line in out.splitlines():
        if (not line.startswith('   Creating library ') and
            not line.startswith('Generating code') and
-@@ -197,8 +198,8 @@ class WinTool(object):
-       # and sometimes doesn't unfortunately.
-       with open(our_manifest, 'r') as our_f:
-         with open(assert_manifest, 'r') as assert_f:
--          our_data = our_f.read().translate(None, string.whitespace)
--          assert_data = assert_f.read().translate(None, string.whitespace)
-+          our_data = our_f.read().translate(str.maketrans('', '', string.whitespace))
-+          assert_data = assert_f.read().translate(str.maketrans('', '', string.whitespace))
-       if our_data != assert_data:
-         os.unlink(out)
-         def dump(filename):
-@@ -225,6 +226,7 @@ class WinTool(object):
-     popen = subprocess.Popen(args, shell=True, env=env,
-                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+@@ -227,6 +228,7 @@ class WinTool(object):
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              universal_newlines=True)
      out, _ = popen.communicate()
 +    out = out.decode(sys.stdout.encoding, 'ignore')
      for line in out.splitlines():
        if line and 'manifest authoring warning 81010002' not in line:
          print(line)
-@@ -257,6 +259,7 @@ class WinTool(object):
-     popen = subprocess.Popen(args, shell=True, env=env,
-                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+@@ -260,6 +262,7 @@ class WinTool(object):
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              universal_newlines=True)
      out, _ = popen.communicate()
 +    out = out.decode('utf-8', 'ignore')
      # Filter junk out of stdout, and write filtered versions. Output we want
      # to filter is pairs of lines that look like this:
      # Processing C:\Program Files (x86)\Microsoft SDKs\...\include\objidl.idl
-@@ -276,6 +279,7 @@ class WinTool(object):
-     popen = subprocess.Popen(args, shell=True, env=env,
-                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+@@ -280,6 +283,7 @@ class WinTool(object):
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              universal_newlines=True)
      out, _ = popen.communicate()
 +    out = out.decode('utf-8', 'ignore')
      for line in out.splitlines():
        if (not line.startswith('Copyright (C) Microsoft Corporation') and
            not line.startswith('Microsoft (R) Macro Assembler') and
-@@ -291,6 +295,7 @@ class WinTool(object):
-     popen = subprocess.Popen(args, shell=True, env=env,
-                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+@@ -296,6 +300,7 @@ class WinTool(object):
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              universal_newlines=True)
      out, _ = popen.communicate()
 +    out = out.decode('utf-8', 'ignore')
      for line in out.splitlines():
